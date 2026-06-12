@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Advokatappen</title>
+  <meta name="description" content="Timeføring og fakturering for norske advokater. Trykk på klienten, trykk start, få ferdig faktura.">
+  <meta name="theme-color" content="#1f4233">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Advokatappen">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Schibsted+Grotesk:wght@400;500;600;700&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div id="app" class="app" aria-live="polite"></div>
+
+  <!-- Fakturaen rendres hit og er det eneste som skrives ut -->
+  <div id="print-root" class="print-root" aria-hidden="true"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

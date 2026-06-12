@@ -1,0 +1,13 @@
+{
+  "name": "Advokatappen",
+  "short_name": "Advokatappen",
+  "description": "Timeføring og fakturering for norske advokater. Trykk på klienten, trykk start, få ferdig faktura.",
+  "lang": "nb",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f5f1e6",
+  "theme_color": "#1f4233",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
