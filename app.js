@@ -6,9 +6,17 @@
 
 'use strict';
 
-// Norsk faktureringspraksis: det faktureres per påbegynt kvarter.
+// Privat praksis: det faktureres per påbegynt kvarter.
 const KVARTER_I_SEKUNDER = 15 * 60;
 const KVARTER_PER_TIME = 4;
+
+// Salærforskriften § 5: på salæroppgaver avrundes samlet tidsbruk
+// (utenom rettsmøter) oppad til nærmeste halvtime. Rettsmøter avrundes
+// oppad til nærmeste halvtime per dag, og møter under én time
+// godtgjøres med én time.
+const HALVTIME_I_TIMER = 0.5;
+const RETTSMOTE_MINSTEGODTGJORING_TIMER = 1;
+const RETTSMOTE_AKTIVITET = 'Rettsmøte';
 
 // Offentlig salær avregnes mot domstolen når oppdraget passerer terskelen.
 const TERSKEL_AVREGNING_OFFENTLIG_TIMER = 60;
@@ -109,6 +117,38 @@ function fakturerbareTimer(sekunder) {
   return kvarterFor(sekunder) / KVARTER_PER_TIME;
 }
 
+function raaTimer(sekunder) {
+  return sekunder / 3600;
+}
+
+function rundOppTilHalvtime(timer) {
+  return Math.ceil(timer / HALVTIME_I_TIMER) * HALVTIME_I_TIMER;
+}
+
+// Salærforskriften § 5-oppgjør for offentlig salær: rettsmøter per dag
+// (minst én time), alt annet arbeid avrundes samlet.
+function beregnOffentligTimer(foringer) {
+  const rettsmoterPerDag = new Map();
+  let annetSekunder = 0;
+  foringer.forEach((f) => {
+    if (f.aktivitet === RETTSMOTE_AKTIVITET) {
+      const dag = f.start.slice(0, 10);
+      rettsmoterPerDag.set(dag, (rettsmoterPerDag.get(dag) || 0) + f.sekunder);
+    } else {
+      annetSekunder += f.sekunder;
+    }
+  });
+  let rettsmoteTimer = 0;
+  rettsmoterPerDag.forEach((sekunder) => {
+    rettsmoteTimer += Math.max(
+      RETTSMOTE_MINSTEGODTGJORING_TIMER,
+      rundOppTilHalvtime(raaTimer(sekunder))
+    );
+  });
+  const annetTimer = annetSekunder > 0 ? rundOppTilHalvtime(raaTimer(annetSekunder)) : 0;
+  return { annetTimer, rettsmoteTimer, totaltTimer: annetTimer + rettsmoteTimer };
+}
+
 function klient(klientId) {
   return state.klienter.find((k) => k.id === klientId) || null;
 }
@@ -120,7 +160,12 @@ function uavregnedeForinger(klientId) {
 function uavregnetSum(klientId) {
   const k = klient(klientId);
   const foringer = uavregnedeForinger(klientId);
-  const timer = foringer.reduce((sum, f) => sum + fakturerbareTimer(f.sekunder), 0);
+  let timer;
+  if (k && k.klienttype === 'offentlig') {
+    timer = beregnOffentligTimer(foringer).totaltTimer;
+  } else {
+    timer = foringer.reduce((sum, f) => sum + fakturerbareTimer(f.sekunder), 0);
+  }
   return { antall: foringer.length, timer, belop: timer * Number(k ? k.sats : 0) };
 }
 
@@ -212,22 +257,28 @@ function lagFaktura(klientId) {
   const naa = new Date();
   const nummer = `${naa.getFullYear()}-${String(state.fakturaTeller).padStart(3, '0')}`;
 
-  const linjer = foringer
-    .slice()
-    .sort((a, b) => a.start.localeCompare(b.start))
-    .map((f) => {
-      const timer = fakturerbareTimer(f.sekunder);
-      return {
-        dato: f.start,
-        aktivitet: f.aktivitet,
-        sekunder: f.sekunder,
-        timer,
-        sats: Number(k.sats),
-        belop: timer * Number(k.sats),
-      };
-    });
+  const erOffentlig = k.klienttype === 'offentlig';
+  const sortert = foringer.slice().sort((a, b) => a.start.localeCompare(b.start));
 
-  const sumEks = linjer.reduce((sum, l) => sum + l.belop, 0);
+  // Salæroppgave: timelisten viser medgått tid per føring, avrundingen
+  // skjer på totalen etter salærforskriften. Privat faktura: hver føring
+  // avregnes per påbegynt kvarter.
+  const linjer = sortert.map((f) => {
+    const timer = erOffentlig ? raaTimer(f.sekunder) : fakturerbareTimer(f.sekunder);
+    return {
+      dato: f.start,
+      aktivitet: f.aktivitet,
+      sekunder: f.sekunder,
+      timer,
+      sats: Number(k.sats),
+      belop: erOffentlig ? null : timer * Number(k.sats),
+    };
+  });
+
+  const offentligTimer = erOffentlig ? beregnOffentligTimer(foringer) : null;
+  const sumEks = erOffentlig
+    ? offentligTimer.totaltTimer * Number(k.sats)
+    : linjer.reduce((sum, l) => sum + l.belop, 0);
   const mva = sumEks * MVA_SATS;
 
   const forfall = new Date(naa);
@@ -236,13 +287,14 @@ function lagFaktura(klientId) {
   const faktura = {
     id: nyId(),
     nummer,
-    type: k.klienttype === 'offentlig' ? 'salaeroppgave' : 'faktura',
+    type: erOffentlig ? 'salaeroppgave' : 'faktura',
     klientId,
     dato: naa.toISOString(),
     forfall: forfall.toISOString(),
     klient: { navn: k.navn, fodt: k.fodt, sakstype: k.sakstype, klienttype: k.klienttype, oppdrag: k.oppdrag },
     advokat: { ...state.advokat },
     linjer,
+    offentligTimer,
     sumEks,
     mva,
     sumInk: sumEks + mva,
@@ -276,7 +328,7 @@ function render() {
       </nav>
     </header>
     ${innhold}
-    <p class="fotnote"><span class="paragraf">§</span> Alt lagres lokalt på denne enheten. Tid avregnes per påbegynt kvarter.</p>
+    <p class="fotnote"><span class="paragraf">§</span> Alt lagres lokalt på denne enheten. Privat tid avregnes per påbegynt kvarter, salæroppgaver etter salærforskriften § 5.</p>
   `;
 
   kobleSkjemaer();
@@ -378,7 +430,7 @@ function visNyKlient() {
       </div>
       <div class="sporsmal felt">
         <label for="sats"><span class="nummer">5.</span> Hvilken timesats gjelder?
-          <span class="hjelpetekst">Kroner per time, eks. mva. For offentlig salær: gjeldende salærsats.</span>
+          <span class="hjelpetekst">Kroner per time, eks. mva. Rettshjelpssatsen er 1 375 kr i 2026 (offentlig salær).</span>
         </label>
         <input type="number" id="sats" name="sats" required min="0" step="1" inputmode="numeric" value="${esc(standardsats)}" placeholder="F.eks. 2000">
       </div>
@@ -409,15 +461,20 @@ function visKlient(klientId) {
     </button>
   `).join('');
 
-  const foringsliste = foringer.map((f) => `
+  const erOffentlig = k.klienttype === 'offentlig';
+  const foringsliste = foringer.map((f) => {
+    const visteTimer = erOffentlig ? raaTimer(f.sekunder) : fakturerbareTimer(f.sekunder);
+    const belop = erOffentlig ? 'avregnes samlet' : fmtKr(fakturerbareTimer(f.sekunder) * Number(k.sats));
+    return `
     <div class="foring">
       <span>
         <span class="aktivitetsnavn">${esc(f.aktivitet)}</span><br>
         <span class="dato">${fmtDatoKort(f.start)} · målt ${fmtKlokke(f.sekunder)} · <button class="lenkeknapp" data-action="slettForing" data-id="${f.id}">Slett</button></span>
       </span>
-      <span class="varighet">${fmtTimerDesimal(fakturerbareTimer(f.sekunder))} t<br><span class="belop">${fmtKr(fakturerbareTimer(f.sekunder) * Number(k.sats))}</span></span>
+      <span class="varighet">${fmtTimerDesimal(visteTimer)} t<br><span class="belop">${belop}</span></span>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   const terskelVarsel = bortePassertTerskel(k) ? `
     <div class="varsel">
@@ -472,7 +529,7 @@ function visKlient(klientId) {
         ${foringer.length ? foringsliste : '<p class="undertekst" style="margin:0">Ingen føringer ennå. Start tidtakingen over når arbeidet begynner.</p>'}
         ${foringer.length ? `
           <div class="sumlinje">
-            <span>${fmtTimerDesimal(sum.timer)} timer uavregnet</span>
+            <span>${fmtTimerDesimal(sum.timer)} timer uavregnet${erOffentlig ? ' (salærforskriften § 5)' : ''}</span>
             <span class="sum-kr">${fmtKr(sum.belop)}</span>
           </div>
         ` : ''}
@@ -502,11 +559,20 @@ function fakturaDok(f) {
       <td>${esc(l.aktivitet)}</td>
       <td class="tall">${fmtTimerDesimal(l.timer)}</td>
       <td class="tall">${fmtKr(l.sats)}</td>
-      <td class="tall">${fmtKr(l.belop)}</td>
+      <td class="tall">${l.belop == null ? '&ndash;' : fmtKr(l.belop)}</td>
     </tr>
   `).join('');
 
   const sumTimer = f.linjer.reduce((sum, l) => sum + l.timer, 0);
+
+  const summerRader = erSalaer && f.offentligTimer ? `
+    <div class="rad"><span>Medgått tid i alt</span><span class="tall">${fmtTimerDesimal(sumTimer)}</span></div>
+    ${f.offentligTimer.annetTimer ? `<div class="rad"><span>Arbeid utenom rettsmøter, avrundet til halvtime</span><span class="tall">${fmtTimerDesimal(f.offentligTimer.annetTimer)}</span></div>` : ''}
+    ${f.offentligTimer.rettsmoteTimer ? `<div class="rad"><span>Rettsmøter, per dag (minst 1 time)</span><span class="tall">${fmtTimerDesimal(f.offentligTimer.rettsmoteTimer)}</span></div>` : ''}
+    <div class="rad"><span>Timer til godtgjøring (salærforskriften § 5)</span><span class="tall">${fmtTimerDesimal(f.offentligTimer.totaltTimer)}</span></div>
+  ` : `
+    <div class="rad"><span>Timer i alt (per påbegynt kvarter)</span><span class="tall">${fmtTimerDesimal(sumTimer)}</span></div>
+  `;
 
   return `
     <div class="dok">
@@ -553,7 +619,7 @@ function fakturaDok(f) {
         <tbody>${linjer}</tbody>
       </table>
       <div class="summer">
-        <div class="rad"><span>Timer i alt (per påbegynt kvarter)</span><span class="tall">${fmtTimerDesimal(sumTimer)}</span></div>
+        ${summerRader}
         <div class="rad"><span>Salær eks. mva.</span><span class="tall">${fmtKr(f.sumEks)}</span></div>
         <div class="rad"><span>Merverdiavgift 25 %</span><span class="tall">${fmtKr(f.mva)}</span></div>
         <div class="rad total"><span>Å betale</span><span class="tall">${fmtKr(f.sumInk)}</span></div>

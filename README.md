@@ -7,8 +7,9 @@ Timeføring og fakturering for norske advokater, så enkelt som overhodet mulig.
 - Klientoversikt: alle klientene dine når du åpner appen
 - Ny klient registreres med fem raske spørsmål (navn, fødselsdato, sivil/straff, privat/offentlig salær, timesats) som plasserer klienten i riktig faktureringskategori
 - Tidtaking med ett trykk: velg aktivitet ("Klient ringer", "Klientmøte" osv.), trykk start, trykk stopp. Tiden registreres direkte på klienten
-- Tid avregnes per påbegynt kvarter, slik norsk praksis er. Målt råtid vises også
-- Faktura med ett trykk: spesifisert per føring (dato, aktivitet, timer, sats, beløp), med mva-linje, klar til utskrift eller PDF
+- Privat klient: tid avregnes per påbegynt kvarter, slik bransjepraksis er. Målt råtid vises også
+- Offentlig salær: salæroppgaven følger salærforskriften § 5, samlet tid utenom rettsmøter avrundes opp til nærmeste halvtime, rettsmøter avrundes per dag og godtgjøres med minst én time
+- Faktura med ett trykk: spesifisert per føring (dato, aktivitet, timer, sats), med mva-linje, klar til utskrift eller PDF
 - Private klienter: månedsfaktura ligger klar når en ny måned starter
 - Offentlig salær: appen varsler når oppdraget passerer 60 timer ("naturlig å avregne") og lager salæroppgave til domstolen
 - Innstillinger for advokatens fakturaopplysninger
